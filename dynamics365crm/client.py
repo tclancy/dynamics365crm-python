@@ -1,17 +1,20 @@
 import requests
-import json
+
+
+class Dynamics365Exception(Exception):
+    pass
 
 
 class Client:
-    api_base_url = "api/data/v9.0"
     header = {"Accept": "application/json, */*", "content-type": "application/json; charset=utf-8",
               'OData-MaxVersion': '4.0', 'OData-Version': '4.0'}
 
-    def __init__(self, resource, client_id=None, client_secret=None, token=None):
+    def __init__(self, resource, client_id=None, client_secret=None, token=None, version="9.0"):
         self.resource = resource
         self.client_id = client_id
         self.client_secret = client_secret
         self.token = token
+        self.api_base_url = "api/data/v" + version
 
     def make_request(self, method, endpoint, expand=None, filter=None, orderby=None, select=None, skip=None, top=None,
                      data=None, json=None, **kwargs):
@@ -55,7 +58,7 @@ class Client:
                     response = requests.request(method, url, headers=self.header, data=data, json=json)
                 return self.parse_response(response)
             else:
-                raise Exception("To make petitions the token is necessary")
+                raise Dynamics365Exception("To make petitions the token is necessary")
 
     def _get(self, endpoint, data=None, **kwargs):
         return self.make_request('get', endpoint, data=data, **kwargs)
@@ -71,58 +74,40 @@ class Client:
 
     def parse_response(self, response):
         """
-            This method get the response request and returns json data or raise exceptions
+            This method get the response request and returns json data or raise Dynamics365Exceptions
             :param response:
             :return:
         """
         if response.status_code == 204 or response.status_code == 201:
             return True
         elif response.status_code == 400:
-            raise Exception(
+            raise Dynamics365Exception(
                 "The URL {0} retrieved an {1} error. Please check your request body and try again.\nRaw message: {2}".format(
                     response.url, response.status_code, response.text))
         elif response.status_code == 401:
-            raise Exception(
-                "The URL {0} retrieved and {1} error. Please check your credentials, make sure you have permission to perform this action and try again.".format(
+            raise Dynamics365Exception(
+                "The URL {0} retrieved and {1} error. Please check your credentials, "
+                "make sure you have permission to perform this action and try again.".format(
                     response.url, response.status_code))
         elif response.status_code == 403:
-            raise Exception(
-                "The URL {0} retrieved and {1} error. Please check your credentials, make sure you have permission to perform this action and try again.".format(
+            raise Dynamics365Exception(
+                "The URL {0} retrieved an {1} error. Please check your credentials, "
+                "make sure you have permission to perform this action and try again.".format(
                     response.url, response.status_code))
-        elif response.status_code == 404:
-            raise Exception(
-                "The URL {0} retrieved an {1} error. Please check the URL and try again.\nRaw message: {2}".format(
-                    response.url, response.status_code, response.text))
-        elif response.status_code == 412:
-            raise Exception(
-                "The URL {0} retrieved an {1} error. Please check the URL and try again.\nRaw message: {2}".format(
-                    response.url, response.status_code, response.text))
-        elif response.status_code == 413:
-            raise Exception(
-                "The URL {0} retrieved an {1} error. Please check the URL and try again.\nRaw message: {2}".format(
-                    response.url, response.status_code, response.text))
-        elif response.status_code == 500:
-            raise Exception(
-                "The URL {0} retrieved an {1} error. Please check the URL and try again.\nRaw message: {2}".format(
-                    response.url, response.status_code, response.text))
-        elif response.status_code == 501:
-            raise Exception(
-                "The URL {0} retrieved an {1} error. Please check the URL and try again.\nRaw message: {2}".format(
-                    response.url, response.status_code, response.text))
-        elif response.status_code == 503:
-            raise Exception(
+        elif response.status_code in [404, 412, 413, 500, 501, 503]:
+            raise Dynamics365Exception(
                 "The URL {0} retrieved an {1} error. Please check the URL and try again.\nRaw message: {2}".format(
                     response.url, response.status_code, response.text))
         return response.json()
 
     def url_petition(self, redirect_uri):
         if self.client_id is not None and redirect_uri is not None and self.resource is not None:
-            url = "https://login.microsoftonline.com/{0}/oauth2/authorize?client_id={1}&response_type={2}&redirect_uri={3}&response_mode={4}&resource={5}".format(
-                "common", self.client_id, "code", redirect_uri, "query", self.resource)
+            url = "https://login.microsoftonline.com/{0}/oauth2/authorize?client_id={1}" \
+                  "&response_type={2}&redirect_uri={3}&response_mode={4}&resource={5}".format(
+                  "common", self.client_id, "code", redirect_uri, "query", self.resource)
             return url
         else:
-            raise Exception("The attributes necessary to get the url were not obtained.")
-
+            raise Dynamics365Exception("The attributes necessary to get the url were not obtained.")
 
     def exchange_code(self, redirect_uri, code):
         if self.client_id is not None and self.client_secret is not None and redirect_uri is not None and code is not None:
@@ -137,7 +122,7 @@ class Client:
             response = requests.post(url, data=args)
             return self.parse_response(response)
         else:
-            raise Exception("The attributes necessary to exchange the code were not obtained.")
+            raise Dynamics365Exception("The attributes necessary to exchange the code were not obtained.")
 
     def refresh_token(self, refresh_token, redirect_uri):
         if self.client_id is not None and self.client_secret is not None and refresh_token is not None and redirect_uri is not None and self.resource is not None:
@@ -147,7 +132,7 @@ class Client:
             response = requests.post(url, data=args)
             return self.parse_response(response)
         else:
-            raise Exception("The attributes necessary to refresh the token were not obtained.")
+            raise Dynamics365Exception("The attributes necessary to refresh the token were not obtained.")
 
     def set_token(self, token):
         """
@@ -155,21 +140,21 @@ class Client:
             :param token: A string with the Token.
             :return:
         """
-        if token != "":
+        if token:
             self.token = token
 
     # TODO: four main methods (CRUD)
     def get_data(self, type=None, **kwargs):
         if type is not None:
             return self._get(type, **kwargs)
-        raise Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
+        raise Dynamics365Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
 
     def create_data(self, type=None, **kwargs):
         if type is not None and kwargs is not None:
             params = {}
             params.update(kwargs)
             return self._post(type, json=params)
-        raise Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
+        raise Dynamics365Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
 
     def update_data(self, type=None, id=None, **kwargs):
         if type is not None and id is not None:
@@ -178,14 +163,15 @@ class Client:
             if kwargs is not None:
                 params.update(kwargs)
             return self._patch(url, json=params)
-        raise Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
+        raise Dynamics365Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
 
     def delete_data(self, type=None, id=None):
         if type is not None and id is not None:
             return self._delete('{0}({1})'.format(type, id))
-        raise Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
+        raise Dynamics365Exception("A type is necessary. Example: contacts, leads, accounts, etc... check the library")
 
-    # contact section, see the documentation https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/contact?view=dynamics-ce-odata-9
+    # contact section, see the documentation
+    # https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/contact?view=dynamics-ce-odata-9
     def get_contacts(self, **kwargs):
         return self._get('contacts', **kwargs)
 
@@ -198,7 +184,7 @@ class Client:
     def delete_contact(self, id):
         if id != "":
             return self._delete('contacts({0})'.format(id))
-        raise Exception("To delete a contact is necessary the ID")
+        raise Dynamics365Exception("To delete a contact is necessary the ID")
 
     def update_contact(self, id, **kwargs):
         if id != "":
@@ -207,9 +193,10 @@ class Client:
             if kwargs is not None:
                 params.update(kwargs)
             return self._patch(url, json=params)
-        raise Exception("To update a contact is necessary the ID")
+        raise Dynamics365Exception("To update a contact is necessary the ID")
 
-    # account section, see the documentation https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/account?view=dynamics-ce-odata-9
+    # account section, see the documentation
+    # https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/account?view=dynamics-ce-odata-9
     def get_accounts(self, **kwargs):
         return self._get('accounts', **kwargs)
 
@@ -222,7 +209,7 @@ class Client:
     def delete_account(self, id):
         if id != "":
             return self._delete('accounts({0})'.format(id))
-        raise Exception("To delete an account is necessary the ID")
+        raise Dynamics365Exception("To delete an account is necessary the ID")
 
     def update_account(self, id, **kwargs):
         if id != "":
@@ -231,9 +218,10 @@ class Client:
             if kwargs is not None:
                 params.update(kwargs)
             return self._patch(url, json=params)
-        raise Exception("To update an account is necessary the ID")
+        raise Dynamics365Exception("To update an account is necessary the ID")
 
-    # opportunity section, see the documentation https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/opportunity?view=dynamics-ce-odata-9
+    # opportunity section, see the documentation
+    # https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/opportunity?view=dynamics-ce-odata-9
     def get_opportunities(self, **kwargs):
         return self._get('opportunities', **kwargs)
 
@@ -246,7 +234,7 @@ class Client:
     def delete_opportunity(self, id):
         if id != "":
             return self._delete('opportunities({0})'.format(id))
-        raise Exception("To delete an account is necessary the ID")
+        raise Dynamics365Exception("To delete an account is necessary the ID")
 
     def update_opportunity(self, id, **kwargs):
         if id != "":
@@ -255,9 +243,10 @@ class Client:
             if kwargs is not None:
                 params.update(kwargs)
             return self._patch(url, json=params)
-        raise Exception("To update an opportunity is necessary the ID")
+        raise Dynamics365Exception("To update an opportunity is necessary the ID")
 
-    # leads section, see the documentation https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/lead?view=dynamics-ce-odata-9
+    # leads section, see the documentation
+    # https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/lead?view=dynamics-ce-odata-9
     def get_leads(self, **kwargs):
         return self._get('leads', **kwargs)
 
@@ -274,14 +263,15 @@ class Client:
             if kwargs is not None:
                 params.update(kwargs)
             return self._patch(url, json=params)
-        raise Exception("To update a lead is necessary the ID")
+        raise Dynamics365Exception("To update a lead is necessary the ID")
 
     def delete_lead(self, id):
         if id != "":
             return self._delete('leads({0})'.format(id))
-        raise Exception("To delete a lead is necessary the ID")
+        raise Dynamics365Exception("To delete a lead is necessary the ID")
 
-    # campaign section, see the documentation https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/campaign?view=dynamics-ce-odata-9
+    # campaign section, see the documentation
+    # https://docs.microsoft.com/es-es/dynamics365/customer-engagement/web-api/campaign?view=dynamics-ce-odata-9
     def get_campaigns(self, **kwargs):
         return self._get('campaigns', **kwargs)
 
@@ -298,9 +288,9 @@ class Client:
             if kwargs is not None:
                 params.update(kwargs)
             return self._patch(url, json=params)
-        raise Exception("To update a campaign is necessary the ID")
+        raise Dynamics365Exception("To update a campaign is necessary the ID")
 
     def delete_campaign(self, id):
         if id != "":
             return self._delete('campaigns({0})'.format(id))
-        raise Exception("To delete a campaign is necessary the ID")
+        raise Dynamics365Exception("To delete a campaign is necessary the ID")
